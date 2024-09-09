@@ -1,0 +1,25 @@
+[package]
+name = "www"
+version = "0.1.0"
+edition = "2021"
+default-run = "api"
+
+[[bin]]
+name = "api"
+path = "api.rs"
+
+[dependencies]
+axum = "0.7.5"
+tower = { version = "0.5.0", features = ["full"] }
+tower-http = "0.5.2"
+
+# Workspace dependencies
+async-trait = { workspace = true }
+derive-new = { workspace = true }
+tokio = { workspace=true, features = ["full"] }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+
+[lints]
+workspace = true

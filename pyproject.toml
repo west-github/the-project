@@ -1,0 +1,17 @@
+[tool.poetry]
+name = "the-project"
+version = "0.1.0"
+description = ""
+authors = ["west-github <westcoder@outlook.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.12"
+alembic = "^1.13.2"
+sqlmodel = "^0.0.22"
+psycopg2-binary = "^2.9.9"
+python-dotenv = "^1.0.1"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
