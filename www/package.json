@@ -1,0 +1,15 @@
+{
+  "name": "www",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@turbo/gen": "^2.1.1",
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "turbo": "^2.1.1"
+  }
+}

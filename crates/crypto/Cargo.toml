@@ -1,0 +1,19 @@
+[package]
+edition = "2021"
+name = "lib-crypto"
+version = "0.1.0"
+
+[features]
+default = ["dev"]
+dev = []
+prod = []
+
+[dependencies]
+base64 = "0.22.1"
+rusty_paseto = "0.7.1"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+anyhow = {workspace = true}

@@ -1,2 +1,6 @@
+[env]
+Log="West"
+
+
 [alias]
-www = ["run -p www"]
+tp = ["run -p the-project"]

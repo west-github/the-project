@@ -1,5 +1,5 @@
-/target
-/.venv
-/poetry.lock
-/.mypy_cache
-/__py_cache__
+target
+.venv
+poetry.lock
+.mypy_cache
+__py_cache__
