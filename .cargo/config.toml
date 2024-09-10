@@ -1,6 +1,0 @@
-[env]
-Log="West"
-
-
-[alias]
-tp = ["run -p the-project"]

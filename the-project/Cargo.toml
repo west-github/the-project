@@ -3,31 +3,22 @@ name = "the-project"
 version = "0.1.0"
 edition = "2021"
 
-[features]
-default = ["tower"]
-tower = ["dep:tower-layer", "dep:tower-service"]
-
 
 [dependencies]
+async-trait = "0.1.82"
 axum = "0.7.5"
-tower = { version = "0.5.0", features = ["full"] }
+derive-new = "0.7.0"
+serde = { version = "1.0.210", features = ["derive"] }
+tokio = { version = "1.40.0", features = ["full"] }
+tower = { version = "0.5.1", features = ["full"] }
 tower-http = "0.5.2"
-tower-layer = { version = "0.3.3", optional = true }
-tower-service = { version = "0.3.3", optional = true }
-
-# Workspace dependencies
-async-trait = { workspace = true }
-tokio = { workspace=true, features = ["full"] }
-serde = { workspace = true, features = ["derive"] }
-tracing = { workspace = true }
-tracing-subscriber = { workspace = true }
-derive-new = { workspace = true }
-
-[lints]
-workspace = true
+tower-layer = { version = "0.3.3" }
+tower-service = { version = "0.3.3" }
+tracing = "0.1.40"
+tracing-subscriber = "0.3.18"
 
 [dev-dependencies]
-anyhow = { workspace=true }
+anyhow = "1.0.87"
 bytes = "1.7.1"
 futures-util = "0.3.30"
 http-body = "1.0.1"

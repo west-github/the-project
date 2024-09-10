@@ -4,12 +4,14 @@ use axum::{
 };
 use std::{
     any::type_name,
+    env,
+    str::FromStr,
     task::{Context, Poll},
 };
-use std::{env, str::FromStr};
 use tower_layer::Layer;
 use tower_service::Service;
 
+//  Re - export
 pub use derive_new::new;
 
 pub fn get_env(name: &'static str) -> core::result::Result<String, String> {
@@ -120,8 +122,8 @@ macro_rules! mutex {
 #[macro_export]
 macro_rules! static_s {
     ($ty:ident, $data:expr) => {{
-        static DATA: std::sync::LazyLock<$ty> = crate::lazy_lock!($data);
-        crate::StaticLayer::new(&*DATA)
+        static DATA: std::sync::LazyLock<$ty> = $crate::lazy_lock!($data);
+        $crate::StaticLayer::new(&*DATA)
     }};
 }
 
@@ -169,13 +171,13 @@ macro_rules! string {
     };
 }
 
-#[derive(new)]
+#[derive(new, Clone)]
 pub struct AddStatic<S, T: 'static> {
     inner: S,
     ext: &'static T,
 }
 
-#[derive(new)]
+#[derive(new, Clone)]
 pub struct StaticLayer<T: 'static> {
     ext: &'static T,
 }
@@ -222,7 +224,6 @@ where
     }
 }
 
-// #[cfg(feature = "axum")]
 #[async_trait::async_trait]
 impl<S, T> FromRequestParts<S> for Static<T>
 where
