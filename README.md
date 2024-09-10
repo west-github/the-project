@@ -1,5 +1,6 @@
-Packages contains all feature in a facade pattern with there tests and example
+## Project Structure
 
-apps contains the client apps and the api
+-   **www** host the project web
+-   **the-project** host the core code
 
-migrations contain the migrations file for the project
+**~Wip~** This is a work in progress
