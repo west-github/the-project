@@ -7,21 +7,22 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
-from .model import *  # noqa: F403
+from .model import *  # type: ignore  # noqa: F403
 
 if not load_dotenv():
     print("Failed to load environment .env from the base directory")
     sys.exit(1)
 
-db_url = os.getenv("DATABASE_URL")
-if db_url is None:
-    print("Failed to load database url from environment")
-    sys.exit(1)
-
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
-config.set_main_option("sqlalchemy.url", db_url)
+
+if db_url := os.getenv("DATABASE_URL"):
+    config.set_main_option("sqlalchemy.url", db_url)
+else:
+    print("Failed to load database url from environment")
+    sys.exit(1)
+
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.

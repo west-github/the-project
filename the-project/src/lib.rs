@@ -2,9 +2,17 @@ use axum::{
     extract::FromRequestParts,
     http::{request::Parts, Request, StatusCode},
 };
+use base64::{
+    engine::{
+        general_purpose::{NO_PAD, PAD},
+        GeneralPurpose,
+    },
+    DecodeError, Engine as _,
+};
 use std::{
     any::type_name,
     env,
+    marker::PhantomData,
     str::FromStr,
     task::{Context, Poll},
 };
@@ -86,7 +94,7 @@ macro_rules! f {
 }
 
 #[macro_export]
-macro_rules! __impl_error_display {
+macro_rules! impl_error_display {
     ($ident:ident) => {
         impl std::error::Error for $ident {}
 
@@ -120,10 +128,17 @@ macro_rules! mutex {
 }
 
 #[macro_export]
-macro_rules! static_s {
-    ($ty:ident, $data:expr) => {{
+macro_rules! to_static {
+    ($ty:ty, $data:expr) => {{
         static DATA: std::sync::LazyLock<$ty> = $crate::lazy_lock!($data);
-        $crate::StaticLayer::new(&*DATA)
+        &*DATA
+    }};
+}
+
+#[macro_export]
+macro_rules! static_s {
+    ($data:expr) => {{
+        $crate::StaticLayer::new($data)
     }};
 }
 
@@ -246,14 +261,182 @@ where
     }
 }
 
+pub trait Encoding {
+    const NAME: &'static str;
+    type Success;
+    type Error;
+
+    fn encode(&self, input: impl AsRef<[u8]>) -> Result<Self::Success, Self::Error>;
+
+    fn decode(&self, input: impl AsRef<[u8]>) -> Result<Self::Success, Self::Error>;
+}
+
+pub trait Encryption {
+    type Success;
+    type Error;
+    type Claim;
+
+    fn encrypt(&self, claim: Self::Claim) -> Result<Self::Success, Self::Error>;
+
+    fn decrypt<T>(&self, content: Self::Success, claim: Self::Claim) -> Result<T, Self::Error>;
+}
+
+pub trait Hashing {
+    type Error;
+
+    fn hash(&self, content: &str) -> Result<String, Self::Error>;
+
+    fn verify(&self, content: &str, other: &str) -> Result<bool, Self::Error>;
+}
+
+/// ```no_rust
+/// Base64
+///
+/// Encode and Decode bytes using base64 encoding
+/// ```
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug))]
+pub struct B64<T = UrlSafe>(PhantomData<T>);
+
+impl<T> B64<T> {
+    pub fn new() -> Self {
+        B64(PhantomData)
+    }
+}
+
+const STANDARD: GeneralPurpose = GeneralPurpose::new(&base64::alphabet::STANDARD, PAD);
+const STANDARD_NO_PAD: GeneralPurpose = GeneralPurpose::new(&base64::alphabet::STANDARD, NO_PAD);
+const URL_SAFE: GeneralPurpose = GeneralPurpose::new(&base64::alphabet::URL_SAFE, PAD);
+const URL_SAFE_NO_PAD: GeneralPurpose = GeneralPurpose::new(&base64::alphabet::URL_SAFE, NO_PAD);
+
+// These are used to enforced the standard we want
+macro_rules! impl_encoding {
+    ($ident:ident, $alg:expr, $name:expr) => {
+        #[derive(Clone)]
+        pub struct $ident;
+        impl Encoding for B64<$ident> {
+            const NAME: &'static str = $name;
+            type Success = String;
+            type Error = Error;
+
+            fn encode(&self, input: impl AsRef<[u8]>) -> Result<Self::Success, Self::Error> {
+                Ok($alg.encode(input))
+            }
+
+            fn decode(&self, input: impl AsRef<[u8]>) -> Result<Self::Success, Self::Error> {
+                $alg.decode(input)
+                    .map(String::from_utf8)?
+                    .map_err(|_| Error(String::from("Failed to convert from bytes to string!")))
+            }
+        }
+    };
+}
+
+#[derive(Debug)]
+pub struct Error(pub String);
+
+impl From<DecodeError> for Error {
+    fn from(value: DecodeError) -> Self {
+        use base64::DecodeError::*;
+
+        match value {
+            InvalidByte(offset, bytes) => Error(f!("Invalid token byte at offset: {} bytes = {}", offset, bytes)),
+            InvalidLength(length) => Error(f!("The length of the token is invalid length: {}", length)),
+            InvalidLastSymbol(o, b) => Error(f!("Failed encoding, invalid offset: {} bytes = {}", o, b)),
+            InvalidPadding => Error(string!("This token failed encoding to due to invalid padding")),
+        }
+    }
+}
+
+impl_encoding!(UrlSafe, URL_SAFE, "URLSAFE");
+impl_encoding!(Standard, STANDARD, "STANDARD");
+impl_encoding!(UrlSafeNopad, URL_SAFE_NO_PAD, "URLSAFE NOPAD");
+impl_encoding!(StandardNopad, STANDARD_NO_PAD, "STANDARD NOPAD");
+impl_error_display!(Error);
+
+#[derive(Default)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub struct Header<'a> {
+    pub aud: Option<&'a str>,
+
+    pub sub: Option<&'a str>,
+
+    pub iss: Option<&'a str>,
+
+    pub tid: Option<&'a str>,
+
+    pub nbf: Option<&'a str>,
+
+    pub iat: Option<&'a str>,
+
+    pub exp: Option<&'a str>,
+
+    /// Footer
+    pub ftr: Option<&'a str>,
+
+    /// Implicit assertions
+    pub ixa: Option<&'a str>,
+}
+
+#[doc = r#"Construct header
+
+aud = AudienceClaim
+
+sub = SubjectClaim
+
+iss = IssuerClaim
+
+tid = TokenIdentificationClaim
+
+nbf = Not Before claim
+
+iat = IssuedAtClaim
+
+exp = ExpirationClaim
+
+ftr = FooterClaim
+
+ixa = Implicit assertion claim
+```rust
+use lib_crypto::{header, Header};
+let header = header!("aud" => "aud", "sub" => "sub", "iss" => "iss");
+assert_eq!(header, Header{aud: Some("aud"), sub: Some("sub"), iss: Some("iss"), ..Default::default()});
+```"#]
+#[macro_export]
+macro_rules! header {
+    ($($ident:expr => $value:expr),+) => {{
+        let mut header = $crate::Header::default();
+        $(
+            match $ident {
+                "aud" => {header.aud = Some($value)},
+                "sub" => {header.sub = Some($value)},
+                "iss" => {header.iss = Some($value)},
+                "tid" => {header.tid = Some($value)},
+                "nbf" => {header.nbf = Some($value)},
+                "iat" => {header.iat = Some($value)},
+                "exp" => {header.exp = Some($value)},
+                "ftr" => {header.ftr = Some($value)},
+                "ixa" => {header.ixa = Some($value)},
+                _ => {},
+            }
+        )+
+
+        header
+    }};
+}
+
 #[cfg(test)]
 pub mod test {
+    use std::sync::LazyLock;
+
+    use crate::static_s;
+
     use super::*;
+    use anyhow::{anyhow, Result};
     use axum::http::{Request, Response};
     use bytes::Bytes;
     use derive_new::new;
     use http_body_util::BodyExt;
-    use std::convert::Infallible;
     use tower::BoxError;
     use tower::{service_fn, ServiceBuilder, ServiceExt};
 
@@ -280,22 +463,82 @@ pub mod test {
     struct Data(&'static str);
 
     #[tokio::test]
-    async fn static_service() -> anyhow::Result<()> {
-        async fn handler(req: Request<Body>) -> Result<Response<&'static str>, Infallible> {
-            let static_data = req.extensions().get::<Static<Data>>().unwrap();
-            Ok(Response::new(static_data.0 .0))
+    async fn static_service() -> Result<()> {
+        async fn handler(req: Request<Body>) -> Result<Response<String>> {
+            fn extractor<T>(req: &Request<Body>) -> Result<&'static T>
+            where
+                T: Send + Sync + 'static,
+            {
+                let Static(_ext) = req
+                    .extensions()
+                    .get::<Static<T>>()
+                    .ok_or(anyhow!(f!("Failed to extract: {}", std::any::type_name::<T>())))?;
+
+                Ok(*_ext)
+            }
+
+            let Data(data) = extractor::<Data>(&req)?;
+            let encoder = extractor::<B64<Standard>>(&req)?;
+            Ok(Response::new(encoder.encode(data)?))
         }
 
+        static ENCODER: LazyLock<B64<Standard>> = lazy_lock!(B64::<Standard>::new());
+        let data: &'static Data = to_static!(Data, Data::new("West"));
+
         let res = ServiceBuilder::new()
-            .layer(crate::static_s!(Data, Data::new("West")))
+            .layer(static_s!(data))
+            .layer(static_s!(&*ENCODER))
             .service(service_fn(handler))
             .oneshot(Request::new(Body::empty()))
             .await?
             .into_body();
 
-        assert_eq!("West", res);
+        let res = ENCODER.decode(res)?;
 
-        println!("{}", res);
+        assert_eq!("West", res);
         Ok(())
+    }
+
+    #[test]
+    fn test_header() {
+        let header = crate::header!("aud" => "https://example.com", "sub" => "http://example.com");
+
+        println!("{:#?}", header);
+    }
+
+    /// Encode and Decode The value Passed testing the engine passed
+    ///
+    /// # Errors
+    ///
+    /// This function will return an error if encoding and decoding failed.
+    fn encode_and_decode_handler<T>(engine: T, value: impl AsRef<[u8]>) -> Result<()>
+    where
+        T: Encoding<Success = String, Error = Error>,
+    {
+        let enc_content = engine.encode(value)?;
+
+        println!("{} - {:?}", T::NAME, enc_content);
+        println!("{} - {:?}", T::NAME, engine.decode(enc_content)?);
+        Ok(())
+    }
+
+    #[test]
+    fn test_standard_no_pad() -> Result<()> {
+        encode_and_decode_handler(B64::<StandardNopad>::new(), "ABCDGETAJHE")
+    }
+
+    #[test]
+    fn test_url_safe_no_pad() -> Result<()> {
+        encode_and_decode_handler(B64::<UrlSafeNopad>::new(), "ABCDGETAJHE")
+    }
+
+    #[test]
+    fn test_standard() -> Result<()> {
+        encode_and_decode_handler(B64::<Standard>::new(), "ABCDGETAJHE")
+    }
+
+    #[test]
+    fn test_url_safe() -> Result<()> {
+        encode_and_decode_handler(B64::<UrlSafe>::new(), "ABCDGETAJHE")
     }
 }
